@@ -725,7 +725,7 @@ function LoanRow({ loan, onOpen, onNotes, showDocsColumns }) {
 }
 
 // ─── PIPELINE TABLE ───
-function PipelineTable({ loans, onOpen, onNotes, emptyMsg, showDocsColumns }) {
+function PipelineTable({ loans, onOpen, onNotes, emptyMsg, showDocsColumns, sortCol, sortDir, onSort }) {
   if (!loans.length) {
     return (
       <div style={{ textAlign: "center", padding: "52px 24px", color: NXT.muted, fontSize: 14 }}>
@@ -742,11 +742,30 @@ function PipelineTable({ loans, onOpen, onNotes, emptyMsg, showDocsColumns }) {
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ background: NXT.ltgray, borderBottom: `2px solid ${NXT.border}` }}>
-            {headers.map(h => (
-              <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11,
-                fontWeight: 700, color: NXT.dark, textTransform: "uppercase",
-                letterSpacing: "0.4px", whiteSpace: "nowrap", padding: "10px 12px" }}>{h}</th>
-            ))}
+            {headers.map(h => {
+              const colMap = {
+                "Last Touch": "lastTouch", "Borrower": "borrower", "Arive #": "ariveLoanNum",
+                "Lender": "lender", "Lender Loan #": "lenderLoanNum", "LO": "lo",
+                "Processor": "processor", "Mortgage Type": "mortgageType", "Loan Purpose": "loanType",
+                "Milestone": "milestone", "Days": "estClosingDate", "Close": "estClosingDate",
+                "Lock Exp": "lockExpiration", "Cure": "toleranceCures",
+                "Docs Signed": "docsSignedDate", "Loan Funded": "loanFundedDate",
+                "Closer": "closer"
+              };
+              const col = colMap[h];
+              const active = sortCol === col;
+              return (
+                <th key={h} onClick={col ? () => onSort(col) : undefined}
+                  style={{ padding: "10px 12px", textAlign: "left", fontSize: 11,
+                    fontWeight: 700, color: active ? NXT.royal : NXT.dark,
+                    textTransform: "uppercase", letterSpacing: "0.4px",
+                    whiteSpace: "nowrap", cursor: col ? "pointer" : "default",
+                    userSelect: "none",
+                    borderBottom: active ? `2px solid ${NXT.royal}` : "none" }}>
+                  {h}{col ? (active ? (sortDir === "asc" ? " ↑" : " ↓") : " ↕") : ""}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -967,6 +986,9 @@ export default function App() {
   const [showAdd, setShowAdd]     = useState(false);
   const [notesLoan, setNotesLoan]   = useState(null);
   const [search, setSearch]       = useState("");
+  const [sortCol, setSortCol]     = useState("estClosingDate");
+  const [sortDir, setSortDir]     = useState("asc");
+  const [filters, setFilters]     = useState({ lo: "", processor: "", mortgageType: "", closer: "", milestone: "" });
 
   const handleAuth = () => {
     sessionStorage.setItem("nxt_closing_auth", "1");
@@ -998,15 +1020,51 @@ export default function App() {
   const newCt = arr => arr.filter(l => l.isNew).length;
 
   const filtered = arr => {
-    if (!search.trim()) return arr;
-    const q = search.toLowerCase();
-    return arr.filter(l =>
-      (l.borrower || "").toLowerCase().includes(q) ||
-      (l.ariveLoanNum || "").toLowerCase().includes(q) ||
-      (l.lender || "").toLowerCase().includes(q) ||
-      (l.lo || "").toLowerCase().includes(q)
-    );
+    let out = arr;
+    // search
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      out = out.filter(l =>
+        (l.borrower || "").toLowerCase().includes(q) ||
+        (l.ariveLoanNum || "").toLowerCase().includes(q) ||
+        (l.lender || "").toLowerCase().includes(q) ||
+        (l.lo || "").toLowerCase().includes(q)
+      );
+    }
+    // dropdown filters
+    if (filters.lo)           out = out.filter(l => l.lo === filters.lo);
+    if (filters.processor)    out = out.filter(l => l.processor === filters.processor);
+    if (filters.mortgageType) out = out.filter(l => l.mortgageType === filters.mortgageType);
+    if (filters.closer)       out = out.filter(l => l.closer === filters.closer);
+    if (filters.milestone)    out = out.filter(l => l.milestone === filters.milestone);
+    // sort
+    if (sortCol) {
+      out = [...out].sort((a, b) => {
+        let av = a[sortCol] || "";
+        let bv = b[sortCol] || "";
+        // numeric for days
+        if (sortCol === "estClosingDate" || sortCol === "lastTouch" || sortCol === "lockExpiration" || sortCol === "docsSignedDate" || sortCol === "loanFundedDate") {
+          av = av ? new Date(av.slice(0,10)).getTime() : 0;
+          bv = bv ? new Date(bv.slice(0,10)).getTime() : 0;
+          return sortDir === "asc" ? av - bv : bv - av;
+        }
+        av = av.toString().toLowerCase();
+        bv = bv.toString().toLowerCase();
+        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      });
+    }
+    return out;
   };
+
+  const toggleSort = col => {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  };
+
+  const setFilter = (k, v) => setFilters(f => ({ ...f, [k]: v }));
+
+  // Unique values for filter dropdowns from current loans
+  const uniq = (key) => [...new Set(loans.map(l => l[key]).filter(Boolean))].sort();
 
   const onSave   = updated => setLoans(ls => ls.map(l => l.id === updated.id ? updated : l));
   const onDelete = id      => setLoans(ls => ls.filter(l => l.id !== id));
@@ -1152,8 +1210,50 @@ export default function App() {
                   </button>
                 )}
               </div>
+              {/* Filter bar */}
+              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${NXT.border}`,
+                display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center",
+                background: "#fafbff" }}>
+                <select value={filters.lo} onChange={e => setFilter("lo", e.target.value)}
+                  style={{ ...iS, width: "auto", minWidth: 120, padding: "5px 8px", fontSize: 12 }}>
+                  <option value="">All LOs</option>
+                  {uniq("lo").map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+                <select value={filters.processor} onChange={e => setFilter("processor", e.target.value)}
+                  style={{ ...iS, width: "auto", minWidth: 120, padding: "5px 8px", fontSize: 12 }}>
+                  <option value="">All Processors</option>
+                  {uniq("processor").map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+                <select value={filters.mortgageType} onChange={e => setFilter("mortgageType", e.target.value)}
+                  style={{ ...iS, width: "auto", minWidth: 130, padding: "5px 8px", fontSize: 12 }}>
+                  <option value="">All Mortgage Types</option>
+                  {uniq("mortgageType").map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+                <select value={filters.closer} onChange={e => setFilter("closer", e.target.value)}
+                  style={{ ...iS, width: "auto", minWidth: 130, padding: "5px 8px", fontSize: 12 }}>
+                  <option value="">All Closers</option>
+                  {uniq("closer").map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+                <select value={filters.milestone} onChange={e => setFilter("milestone", e.target.value)}
+                  style={{ ...iS, width: "auto", minWidth: 140, padding: "5px 8px", fontSize: 12 }}>
+                  <option value="">All Milestones</option>
+                  {uniq("milestone").map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+                {(filters.lo || filters.processor || filters.mortgageType || filters.closer || filters.milestone) && (
+                  <button onClick={() => setFilters({ lo: "", processor: "", mortgageType: "", closer: "", milestone: "" })}
+                    style={{ fontSize: 11, color: NXT.muted, background: "none", border: "none",
+                      cursor: "pointer", fontFamily: "inherit", textDecoration: "underline" }}>
+                    Clear filters
+                  </button>
+                )}
+                <span style={{ marginLeft: "auto", fontSize: 11, color: NXT.muted }}>
+                  {filtered(currentArr).length} of {currentArr.length} files
+                </span>
+              </div>
+
               <PipelineTable loans={filtered(currentArr)} onOpen={setSelected} onNotes={setNotesLoan}
                 showDocsColumns={activeTab === "tab2"}
+                sortCol={sortCol} sortDir={sortDir} onSort={toggleSort}
                 emptyMsg={search ? "No files match your search" : undefined} />
             </div>
           )}
