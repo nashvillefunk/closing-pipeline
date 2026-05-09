@@ -71,6 +71,7 @@ function toDB(f) {
     notes:            f.notes || "",
     docs_signed_date: f.docsSignedDate || null,
     loan_funded_date: f.loanFundedDate || null,
+    last_touch:       f.lastTouch || null,
     is_new:           f.isNew !== undefined ? f.isNew : true,
     created_at:       f.createdAt || new Date().toISOString(),
     updated_at:       new Date().toISOString(),
@@ -97,6 +98,7 @@ function fromDB(r) {
     closer:          r.closer,
     milestone:       r.milestone,
     notes:           r.notes,
+    lastTouch:       r.last_touch,
     docsSignedDate:  r.docs_signed_date,
     loanFundedDate:  r.loan_funded_date,
     isNew:           r.is_new,
@@ -234,7 +236,7 @@ function Modal({ title, onClose, children, wide, extraWide }) {
 }
 
 // ─── NOTES LOG ───
-function NotesLog({ loanId }) {
+function NotesLog({ loanId, onNoteAdded }) {
   const [notes, setNotes]     = useState([]);
   const [text, setText]       = useState("");
   const [saving, setSaving]   = useState(false);
@@ -253,7 +255,7 @@ function NotesLog({ loanId }) {
     const now = new Date().toISOString();
     const row = { id: uid(), loan_id: loanId, note: text.trim(), created_at: now };
     const { error } = await supabase.from("closing_notes").insert(row);
-    if (!error) { setNotes(n => [row, ...n]); setText(""); }
+    if (!error) { setNotes(n => [row, ...n]); setText(""); if (onNoteAdded) onNoteAdded(now.slice(0,10)); }
     setSaving(false);
   };
 
@@ -550,14 +552,14 @@ function LoanModal({ loan, onClose, onSave, onDelete }) {
               <Input label="Tolerance Cures" value={form.toleranceCures || ""}
                 onChange={e => set("toleranceCures", e.target.value)} half />
             </FRow>
-            <Field label="Notes">
-              <textarea style={{ ...iS, minHeight: 72, resize: "vertical" }}
-                value={form.notes || ""} onChange={e => set("notes", e.target.value)} />
-            </Field>
+
           </>
         )}
 
-        {subTab === "notes" && <NotesLog loanId={loan.id} />}
+        {subTab === "notes" && <NotesLog loanId={loan.id} onNoteAdded={async (date) => {
+          await supabase.from("closing_pipeline").update({ last_touch: date, updated_at: new Date().toISOString() }).eq("id", loan.id);
+          onSave({ ...form, lastTouch: date });
+        }} />}
 
         {subTab === "email" && (
           <div style={{ textAlign: "center", padding: "32px 24px" }}>
@@ -666,30 +668,50 @@ function AddFileModal({ onClose, onAdd }) {
 }
 
 // ─── LOAN ROW ───
-function LoanRow({ loan, onOpen }) {
+function LoanRow({ loan, onOpen, onNotes, showDocsColumns }) {
   const isNew = loan.isNew;
   return (
     <tr onClick={() => onOpen(loan)}
       style={{ cursor: "pointer",
         background: isNew ? "linear-gradient(90deg, #f5eeff 0%, #eef2ff 100%)" : "transparent",
         borderLeft: isNew ? `3px solid ${NXT.purple}` : "3px solid transparent" }}>
-      <td style={{ padding: "11px 14px" }}>
+      <td style={{ padding: "10px 12px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           {isNew && <NewBadge />}
-          <span style={{ fontSize: 13, fontWeight: 600, color: NXT.dark }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: NXT.dark }}>
             {loan.borrower || "—"}
           </span>
         </div>
       </td>
-      <td style={{ padding: "11px 14px", fontSize: 12, color: NXT.muted }}>{loan.ariveLoanNum || "—"}</td>
-      <td style={{ padding: "11px 14px", fontSize: 12, color: NXT.text }}>{loan.lender || "—"}</td>
-      <td style={{ padding: "11px 14px", fontSize: 12, color: NXT.text }}>{loan.lo || "—"}</td>
-      <td style={{ padding: "11px 14px", fontSize: 12, color: NXT.text }}>{loan.processor || "—"}</td>
-      <td style={{ padding: "11px 14px", fontSize: 12, color: NXT.text }}>{loan.mortgageType || "—"}</td>
-      <td style={{ padding: "11px 14px" }}><MilestoneBadge value={loan.milestone} small /></td>
-      <td style={{ padding: "11px 14px" }}><DaysChip dateStr={loan.estClosingDate} /></td>
-      <td style={{ padding: "11px 14px", fontSize: 12, color: NXT.text }}>{fmtDate(loan.estClosingDate)}</td>
-      <td style={{ padding: "11px 14px", fontSize: 12,
+      <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.muted }}>{loan.ariveLoanNum || "—"}</td>
+      <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.text }}>{loan.lender || "—"}</td>
+      <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.muted }}>{loan.lenderLoanNum || "—"}</td>
+      <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.text }}>{loan.lo || "—"}</td>
+      <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.text }}>{loan.processor || "—"}</td>
+      <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.text }}>{loan.mortgageType || "—"}</td>
+      <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.text }}>{loan.loanType || "—"}</td>
+      <td style={{ padding: "10px 12px" }}><MilestoneBadge value={loan.milestone} small /></td>
+      <td style={{ padding: "10px 12px" }}><DaysChip dateStr={loan.estClosingDate} /></td>
+      <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.text }}>{fmtDate(loan.estClosingDate)}</td>
+      <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.text }}>
+        {loan.lockExpiration ? loan.lockExpiration.slice(0,10) : "—"}
+      </td>
+      <td style={{ padding: "10px 12px", fontSize: 12, color: loan.toleranceCures ? "#e65100" : NXT.muted }}>
+        {loan.toleranceCures || "—"}
+      </td>
+      {showDocsColumns && (
+        <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.text }}>{loan.docsSignedDate ? fmtDate(loan.docsSignedDate) : "—"}</td>
+      )}
+      {showDocsColumns && (
+        <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.text }}>{loan.loanFundedDate ? fmtDate(loan.loanFundedDate) : "—"}</td>
+      )}
+      <td style={{ padding: "10px 12px", fontSize: 12, color: NXT.muted }}>
+        {loan.lastTouch ? fmtDate(loan.lastTouch) : "—"}
+      </td>
+      <td style={{ padding: "10px 12px" }} onClick={e => { e.stopPropagation(); onNotes(loan); }}>
+        <span style={{ fontSize: 16, cursor: "pointer", opacity: 0.7 }} title="View notes">📝</span>
+      </td>
+      <td style={{ padding: "10px 12px", fontSize: 12,
         color: (!loan.closer || loan.closer === "Unassigned") ? NXT.muted : NXT.text }}>
         {loan.closer || "Unassigned"}
       </td>
@@ -698,7 +720,7 @@ function LoanRow({ loan, onOpen }) {
 }
 
 // ─── PIPELINE TABLE ───
-function PipelineTable({ loans, onOpen, emptyMsg }) {
+function PipelineTable({ loans, onOpen, onNotes, emptyMsg, showDocsColumns }) {
   if (!loans.length) {
     return (
       <div style={{ textAlign: "center", padding: "52px 24px", color: NXT.muted, fontSize: 14 }}>
@@ -706,7 +728,10 @@ function PipelineTable({ loans, onOpen, emptyMsg }) {
       </div>
     );
   }
-  const headers = ["Borrower","Arive #","Lender","LO","Processor","Mortgage Type","Milestone","Days","Close Date","Closer"];
+  const baseHeaders = ["Borrower","Arive #","Lender","Lender Loan #","LO","Processor","Mortgage Type","Loan Purpose","Milestone","Days","Close Date","Lock Exp.","Cure","Last Touch","Notes","Closer"];
+  const headers = showDocsColumns
+    ? ["Borrower","Arive #","Lender","Lender Loan #","LO","Processor","Mortgage Type","Loan Purpose","Milestone","Days","Close Date","Lock Exp.","Cure","Docs Signed","Loan Funded","Last Touch","Notes","Closer"]
+    : baseHeaders;
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -720,7 +745,7 @@ function PipelineTable({ loans, onOpen, emptyMsg }) {
           </tr>
         </thead>
         <tbody>
-          {loans.map(l => <LoanRow key={l.id} loan={l} onOpen={onOpen} />)}
+          {loans.map(l => <LoanRow key={l.id} loan={l} onOpen={onOpen} onNotes={onNotes} showDocsColumns={showDocsColumns} />)}
         </tbody>
       </table>
     </div>
@@ -891,7 +916,7 @@ function AuthScreen({ onAuth }) {
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
-      justifyContent: "center", fontFamily: "'DM Sans', 'Segoe UI', sans-serif",
+      justifyContent: "center", fontFamily: "'DM Sans', 'Inter', 'Segoe UI', sans-serif",
       background: `linear-gradient(135deg, ${NXT.dark} 0%, ${NXT.royal} 60%, ${NXT.purple} 100%)` }}>
       <div style={{ background: "#fff", borderRadius: 16, padding: "44px 40px",
         width: 360, boxShadow: "0 32px 80px rgba(0,0,0,0.35)", textAlign: "center" }}>
@@ -935,6 +960,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selected, setSelected]   = useState(null);
   const [showAdd, setShowAdd]     = useState(false);
+  const [notesLoan, setNotesLoan]   = useState(null);
   const [search, setSearch]       = useState("");
 
   const handleAuth = () => {
@@ -1002,7 +1028,7 @@ export default function App() {
   if (loading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
       background: `linear-gradient(135deg, ${NXT.dark}, ${NXT.royal})`,
-      fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }}>
+      fontFamily: "'DM Sans', 'Inter', 'Segoe UI', sans-serif" }}>
       <div style={{ color: "#fff", fontSize: 16, fontWeight: 700 }}>Loading pipeline...</div>
     </div>
   );
@@ -1020,7 +1046,7 @@ export default function App() {
       `}</style>
 
       <div style={{ minHeight: "100vh", background: "#f4f6fb",
-        fontFamily: "'DM Sans', 'Segoe UI', sans-serif" }}>
+        fontFamily: "'DM Sans', 'Inter', 'Segoe UI', sans-serif" }}>
 
         {/* ── HEADER ── */}
         <div style={{ background: `linear-gradient(135deg, ${NXT.dark} 0%, ${NXT.royal} 100%)`,
@@ -1121,7 +1147,8 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <PipelineTable loans={filtered(currentArr)} onOpen={setSelected}
+              <PipelineTable loans={filtered(currentArr)} onOpen={setSelected} onNotes={setNotesLoan}
+                showDocsColumns={activeTab === "tab2"}
                 emptyMsg={search ? "No files match your search" : undefined} />
             </div>
           )}
@@ -1133,6 +1160,14 @@ export default function App() {
           onSave={onSave} onDelete={onDelete} />
       )}
       {showAdd && <AddFileModal onClose={() => setShowAdd(false)} onAdd={onAdd} />}
+      {notesLoan && (
+        <Modal title={`📝 Notes — ${notesLoan.borrower}`} onClose={() => setNotesLoan(null)}>
+          <NotesLog loanId={notesLoan.id} onNoteAdded={async (date) => {
+            await supabase.from("closing_pipeline").update({ last_touch: date, updated_at: new Date().toISOString() }).eq("id", notesLoan.id);
+            setLoans(ls => ls.map(l => l.id === notesLoan.id ? { ...l, lastTouch: date } : l));
+          }} />
+        </Modal>
+      )}
     </>
   );
 }
