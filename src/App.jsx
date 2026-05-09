@@ -26,21 +26,22 @@ const NXT = {
 
 // ─── MILESTONE CONFIG ───
 const MILESTONES = {
-  "Clear to Close":        { tab: 1, bg: "#e8f5e9", color: "#2e7d32", border: "#81c784" },
+  "Clear To Close":        { tab: 1, bg: "#e8f5e9", color: "#2e7d32", border: "#81c784" },
   "Docs Out":              { tab: 2, bg: "#e3f2fd", color: "#1565c0", border: "#90caf9" },
   "Docs Signed":           { tab: 2, bg: "#e8eaf6", color: "#283593", border: "#9fa8da" },
   "Loan Funded":           { tab: 3, bg: "#fff8e1", color: "#f57f17", border: "#ffe082" },
   "Broker Check Received": { tab: 3, bg: "#fce4ec", color: "#880e4f", border: "#f48fb1" },
-  "Loan Finalized":        { tab: 3, bg: "#e0f2f1", color: "#00695c", border: "#80cbc4" },
+  "Loan Finalized":        { tab: 4, bg: "#e0f2f1", color: "#00695c", border: "#80cbc4" },
 };
 
 const TAB_MILESTONES = {
-  1: ["Clear to Close"],
+  1: ["Clear To Close"],
   2: ["Docs Out", "Docs Signed"],
-  3: ["Loan Funded", "Broker Check Received", "Loan Finalized"],
+  3: ["Loan Funded", "Broker Check Received"],
+  4: ["Loan Finalized"],
 };
 
-const LOAN_PROGRAMS = ["Conventional","FHA","VA","Non QM","USDA","Jumbo","IRRRL","Other"];
+const MORTGAGE_TYPES = ["Conventional","FHA","VA","Non-QM","USDA","Jumbo","IRRRL","Other"];
 const LOAN_TYPES    = ["Purchase","Refinance","Cash-Out","Other"];
 const LENDERS       = ["UWM","eLend","EPM","Plaza","Windsor","The Loan Store","Newrez","Eleven Mortgage","Other"];
 const CLOSERS       = ["JR Bartram","Unassigned"];
@@ -57,17 +58,19 @@ function toDB(f) {
     lender_loan_num:  f.lenderLoanNum || "",
     est_closing_date: f.estClosingDate || null,
     fund_date:        f.fundDate || null,
-    lock_date:        f.lockDate || null,
+    lock_expiration:  f.lockExpiration || "",
     loan_type:        f.loanType || "",
-    loan_program:     f.loanProgram || "",
+    mortgage_type:    f.mortgageType || "",
     lo:               f.lo || "",
     processor:        f.processor || "",
     settlement_agent: f.settlementAgent || "",
     cd_status:        f.cdStatus || "",
     tolerance_cures:  f.toleranceCures || "",
     closer:           f.closer || "Unassigned",
-    milestone:        f.milestone || "Clear to Close",
+    milestone:        f.milestone || "Clear To Close",
     notes:            f.notes || "",
+    docs_signed_date: f.docsSignedDate || null,
+    loan_funded_date: f.loanFundedDate || null,
     is_new:           f.isNew !== undefined ? f.isNew : true,
     created_at:       f.createdAt || new Date().toISOString(),
     updated_at:       new Date().toISOString(),
@@ -83,9 +86,9 @@ function fromDB(r) {
     lenderLoanNum:   r.lender_loan_num,
     estClosingDate:  r.est_closing_date,
     fundDate:        r.fund_date,
-    lockDate:        r.lock_date,
+    lockExpiration:  r.lock_expiration,
     loanType:        r.loan_type,
-    loanProgram:     r.loan_program,
+    mortgageType:    r.mortgage_type,
     lo:              r.lo,
     processor:       r.processor,
     settlementAgent: r.settlement_agent,
@@ -94,6 +97,8 @@ function fromDB(r) {
     closer:          r.closer,
     milestone:       r.milestone,
     notes:           r.notes,
+    docsSignedDate:  r.docs_signed_date,
+    loanFundedDate:  r.loan_funded_date,
     isNew:           r.is_new,
     createdAt:       r.created_at,
     updatedAt:       r.updated_at,
@@ -504,9 +509,9 @@ function LoanModal({ loan, onClose, onSave, onDelete }) {
               </Field>
             </FRow>
             <FRow>
-              <Field label="Lock Date" half>
-                <input type="date" style={iS} value={form.lockDate || ""}
-                  onChange={e => set("lockDate", e.target.value)} />
+              <Field label="Lock Expiration" half>
+                <input type="date" style={iS} value={form.lockExpiration || ""}
+                  onChange={e => set("lockExpiration", e.target.value)} />
               </Field>
               <Sel label="Milestone" half options={Object.keys(MILESTONES)}
                 value={form.milestone || ""} onChange={e => set("milestone", e.target.value)} />
@@ -514,8 +519,8 @@ function LoanModal({ loan, onClose, onSave, onDelete }) {
             <FRow>
               <Sel label="Loan Type" half options={LOAN_TYPES} value={form.loanType || ""}
                 onChange={e => set("loanType", e.target.value)} />
-              <Sel label="Loan Program" half options={LOAN_PROGRAMS} value={form.loanProgram || ""}
-                onChange={e => set("loanProgram", e.target.value)} />
+              <Sel label="Mortgage Type" half options={MORTGAGE_TYPES} value={form.mortgageType || ""}
+                onChange={e => set("mortgageType", e.target.value)} />
             </FRow>
             <FRow>
               <Input label="Loan Officer" value={form.lo || ""}
@@ -530,6 +535,16 @@ function LoanModal({ loan, onClose, onSave, onDelete }) {
                 onChange={e => set("closer", e.target.value)} />
             </FRow>
             <FRow>
+              <FRow>
+              <Field label="Docs Signed Date" half>
+                <input type="date" style={iS} value={form.docsSignedDate || ""}
+                  onChange={e => set("docsSignedDate", e.target.value)} />
+              </Field>
+              <Field label="Loan Funded Date" half>
+                <input type="date" style={iS} value={form.loanFundedDate || ""}
+                  onChange={e => set("loanFundedDate", e.target.value)} />
+              </Field>
+            </FRow>
               <Input label="CD Status" value={form.cdStatus || ""}
                 onChange={e => set("cdStatus", e.target.value)} half />
               <Input label="Tolerance Cures" value={form.toleranceCures || ""}
@@ -576,7 +591,7 @@ function LoanModal({ loan, onClose, onSave, onDelete }) {
 
 // ─── ADD FILE MODAL ───
 function AddFileModal({ onClose, onAdd }) {
-  const [form, setForm]   = useState({ milestone: "Clear to Close", closer: "Unassigned" });
+  const [form, setForm]   = useState({ milestone: "Clear To Close", closer: "Unassigned" });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -617,8 +632,18 @@ function AddFileModal({ onClose, onAdd }) {
       <FRow>
         <Sel label="Loan Type" half options={LOAN_TYPES} value={form.loanType || ""}
           onChange={e => set("loanType", e.target.value)} />
-        <Sel label="Loan Program" half options={LOAN_PROGRAMS} value={form.loanProgram || ""}
-          onChange={e => set("loanProgram", e.target.value)} />
+        <Sel label="Mortgage Type" half options={MORTGAGE_TYPES} value={form.mortgageType || ""}
+          onChange={e => set("mortgageType", e.target.value)} />
+      </FRow>
+      <FRow>
+        <Field label="Docs Signed Date" half>
+          <input type="date" style={iS} value={form.docsSignedDate || ""}
+            onChange={e => set("docsSignedDate", e.target.value)} />
+        </Field>
+        <Field label="Loan Funded Date" half>
+          <input type="date" style={iS} value={form.loanFundedDate || ""}
+            onChange={e => set("loanFundedDate", e.target.value)} />
+        </Field>
       </FRow>
       <FRow>
         <Input label="Loan Officer" value={form.lo || ""}
@@ -660,6 +685,7 @@ function LoanRow({ loan, onOpen }) {
       <td style={{ padding: "11px 14px", fontSize: 12, color: NXT.text }}>{loan.lender || "—"}</td>
       <td style={{ padding: "11px 14px", fontSize: 12, color: NXT.text }}>{loan.lo || "—"}</td>
       <td style={{ padding: "11px 14px", fontSize: 12, color: NXT.text }}>{loan.processor || "—"}</td>
+      <td style={{ padding: "11px 14px", fontSize: 12, color: NXT.text }}>{loan.mortgageType || "—"}</td>
       <td style={{ padding: "11px 14px" }}><MilestoneBadge value={loan.milestone} small /></td>
       <td style={{ padding: "11px 14px" }}><DaysChip dateStr={loan.estClosingDate} /></td>
       <td style={{ padding: "11px 14px", fontSize: 12, color: NXT.text }}>{fmtDate(loan.estClosingDate)}</td>
@@ -680,7 +706,7 @@ function PipelineTable({ loans, onOpen, emptyMsg }) {
       </div>
     );
   }
-  const headers = ["Borrower","Arive #","Lender","LO","Processor","Milestone","Days","Close Date","Closer"];
+  const headers = ["Borrower","Arive #","Lender","LO","Processor","Mortgage Type","Milestone","Days","Close Date","Closer"];
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -706,11 +732,12 @@ function Dashboard({ loans }) {
   const tab1 = loans.filter(l => TAB_MILESTONES[1].includes(l.milestone));
   const tab2 = loans.filter(l => TAB_MILESTONES[2].includes(l.milestone));
   const tab3 = loans.filter(l => TAB_MILESTONES[3].includes(l.milestone));
+  const tab4 = loans.filter(l => TAB_MILESTONES[4].includes(l.milestone));
 
   const urgent    = loans.filter(l => { const d = daysToClose(l.estClosingDate); return d !== null && d >= 0 && d <= 1; });
   const pastDue   = loans.filter(l => { const d = daysToClose(l.estClosingDate); return d !== null && d < 0 && TAB_MILESTONES[1].includes(l.milestone); });
   const newFiles  = loans.filter(l => l.isNew);
-  const unassigned = loans.filter(l => (!l.closer || l.closer === "Unassigned") && !TAB_MILESTONES[3].includes(l.milestone));
+  const unassigned = loans.filter(l => (!l.closer || l.closer === "Unassigned") && !TAB_MILESTONES[3].includes(l.milestone) && !TAB_MILESTONES[4].includes(l.milestone));
 
   const stats = [
     { label: "Closing / Balancing",  value: tab1.length,       color: NXT.royal,  icon: "🏠" },
@@ -737,7 +764,7 @@ function Dashboard({ loans }) {
 
   // Closer workload (active tabs only)
   const closerMap = {};
-  [...tab1, ...tab2].forEach(l => {
+  [...tab1, ...tab2, ...tab3].forEach(l => {
     const k = l.closer || "Unassigned";
     closerMap[k] = (closerMap[k] || 0) + 1;
   });
@@ -935,6 +962,7 @@ export default function App() {
   const tab1 = useMemo(() => loans.filter(l => TAB_MILESTONES[1].includes(l.milestone)), [loans]);
   const tab2 = useMemo(() => loans.filter(l => TAB_MILESTONES[2].includes(l.milestone)), [loans]);
   const tab3 = useMemo(() => loans.filter(l => TAB_MILESTONES[3].includes(l.milestone)), [loans]);
+  const tab4 = useMemo(() => loans.filter(l => TAB_MILESTONES[4].includes(l.milestone)), [loans]);
 
   const newCt = arr => arr.filter(l => l.isNew).length;
 
@@ -964,9 +992,10 @@ export default function App() {
     { id: "tab1",      label: "Closing / Balancing", icon: "🏠", arr: tab1 },
     { id: "tab2",      label: "Docs Out / Signed",   icon: "📄", arr: tab2 },
     { id: "tab3",      label: "Post Closing / QC",   icon: "✅", arr: tab3 },
+    { id: "tab4",      label: "Archive",               icon: "📦", arr: tab4 },
   ];
 
-  const currentArr = activeTab === "tab1" ? tab1 : activeTab === "tab2" ? tab2 : activeTab === "tab3" ? tab3 : [];
+  const currentArr = activeTab === "tab1" ? tab1 : activeTab === "tab2" ? tab2 : activeTab === "tab3" ? tab3 : activeTab === "tab4" ? tab4 : [];
 
   if (!authed) return <AuthScreen onAuth={handleAuth} />;
 
